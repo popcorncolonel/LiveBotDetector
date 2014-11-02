@@ -23,6 +23,7 @@ def count_users(full_msg):
             if (count == 65959): #This was a number I was getting repeatedly
                 print "what."    #When looking at riotgames (300k viewers).
                 print namegroup  #I still don't know why it is/was happening, so
+                raise KeyError
                 return 0         #it is still printing this for debugging purposes.
             return count - 1
         namegroup = namegroup.split(" ")

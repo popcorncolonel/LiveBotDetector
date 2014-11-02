@@ -1,4 +1,5 @@
 import socket
+import re
 import requests
 import sys 
 from twitch_viewers import user_viewers, removeNonAscii, user_total_views
@@ -7,6 +8,7 @@ from get_exceptions import get_exceptions
 from chat_count import chat_count
 import urllib2
 import webbrowser
+import time
 
 debug = False #debug mode with extraneous error messages and information
 tweetmode = True #true if you want it to tweet, false if you don't
@@ -43,6 +45,7 @@ def get_chatters2(user):
 #   returns the number of chatters in user's Twitch chat
 #user is a string representing http://www.twitch.tv/<user>
 def user_chatters(user):
+    global alternative_chatters_method
     chatters = 0
     chatters2 = 0
     try:
@@ -50,27 +53,31 @@ def user_chatters(user):
     except (KeyboardInterrupt, SystemExit):
         raise
     except:
+        print "oh... error getting chatters for", user
         return user_chatters(user)
-    if (alternative_chatters_method):
+    if alternative_chatters_method:
         chatters2 = get_chatters2(user)
-        if (chatters2 > 1):
+        if chatters2 > 1:
             return chatters2
+        else:
+            print chatters2, "chatters for", user, "(module) :/"
     try:
         while (req.status_code != 200):
-            chatters2 = get_chatters2(user)
             if (alternative_chatters_method):
                 if (chatters2 > 1):
                     return chatters2
-            print "----TMI error", req.status_code, 
-            print "getting", user + " (module returned %d)-----" %chatters2
-            req = requests.get("http://tmi.twitch.tv/group/user/" + user)
+            print "----TMI error", req.status_code, "getting", user + "-----"
+            return user_chatters(user)
         try:
             chat_data = req.json()
         except ValueError:
+            print "error getting chatters for", user
             return user_chatters(user)
         chatters = chat_data['chatter_count']
-    except TypeError:
-        print "recursing, got some kinda error"
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except:
+        print "recursing user_chatters, got an error"
         return user_chatters(user)
     return chatters
 
@@ -134,15 +141,25 @@ def get_frontpage_users():
 #   returns the ratio of chatters to viewers in <user>'s channel
 #user is a string representing http://www.twitch.tv/<user>
 def user_ratio(user):
+    global debug
+    time.sleep(5)
     print "checking", user, "ratio"
     chatters2 = 0
-    exceptions = get_exceptions()
     if user in get_frontpage_users():
         print "nope,", user, "is on the front page of twitch."
         return 1
-    if user in exceptions:
-        print user, "is alright :)"
-        return 1
+    exceptions = get_exceptions()
+#users don't have to put ^ or $ at the beginning. just use .* it's more readable.
+    for regex in exceptions:
+        if regex != '':
+            if regex[0] != '^':
+                regex = '^' + regex
+            if regex[-1] != '$':
+                regex += '$'
+           #if the username matches the regex 
+            if re.match(regex, user, re.I|re.S) != None: 
+                print user, "is alright :)",
+                return 1
     if d2l_check:
         d2l_list = get_dota2lounge_list()
         if (user in d2l_list):
@@ -155,7 +172,7 @@ def user_ratio(user):
     print "here2"
     viewers = user_viewers(user)
     print "here3"
-    if (viewers != 0):
+    if viewers and viewers != 0 and viewers != None:
         maxchat = max(chatters, chatters2)
         ratio = float(maxchat) / viewers
         print user + ": " + str(maxchat) + " / " + str(viewers) + " = %0.3f" %ratio,
@@ -257,8 +274,12 @@ def search_all_games():
         while (topreq.status_code != 200):
             topreq = requests.get("https://api.twitch.tv/kraken/games/top")
         topdata = topreq.json()
-    except ValueError:
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except:
+        print "oh. caught error getting the games list."
         search_all_games()
+        return
     for i in range(0,len(topdata['top'])):
         game = removeNonAscii(topdata['top'][i]['game']['name'])
         print "__" + game + "__", 

@@ -10,6 +10,7 @@ offset = str(0)
 
 def removeNonAscii(s): return "".join([x if ord(x) < 128 else '?' for x in s])
 
+"""
 r = requests.get('https://api.twitch.tv/kraken/games/top' +
                  '?limit=' + limit)
 flag = 1
@@ -19,7 +20,7 @@ while flag: #jank bugfix - sometimes can't read json
         flag = 0
     except:
         pass
-
+"""
 def restart_program():
     python = sys.executable
     os.execl(python, python, * sys.argv)

@@ -1,3 +1,4 @@
+import time
 from twython import Twython
 from get_passwords import get_passwords, get_twitter_name
 import twitter
@@ -45,7 +46,7 @@ def get_game_tweet(game):
     return game_tweet
 
 def current_namelist():
-    statuses = api.GetUserTimeline(twitter_name)
+    statuses = api.GetUserTimeline(twitter_name, count=200)
     if len(statuses) == 1 and statuses[0].text == sentinel_msg:
         return []
     else:
@@ -79,15 +80,32 @@ def send_tweet(user, ratio, game, viewers, tweetmode, ratio_threshold):
         if not tweetmode:
             print "Not",
         print("Tweet text: '" + tweet + "'")
-        statuses = api.GetUserTimeline(twitter_name)
+        while True:
+            try:
+                statuses = api.GetUserTimeline(twitter_name, count=200)
+                break
+            except requests.exceptions.ConnectionError:
+                print "couldn't get my recent stati :((("
+                time.sleep(5)
+                pass
         rec_tweet_id = 0
         for status in statuses:
+            # if deleting sentinel or "updating" a tweet
             if status.text == sentinel_msg or status.text.split(" ")[0] == user:
                 rec_tweet_id = status.id
                 break
         if rec_tweet_id != 0:
             print "Found recent tweet for", user + "! Updating!"
-            api.DestroyStatus(rec_tweet_id)
+            while True:
+                try:
+                    api.DestroyStatus(rec_tweet_id)
+                    break
+                except (KeyboardInterrupt, SystemExit):
+                    raise
+                except:
+                    print "couldn't tweet :( retrying"
+                    time.sleep(5)
+                    pass
         if tweetmode:
             while True:
                 try:
@@ -97,6 +115,7 @@ def send_tweet(user, ratio, game, viewers, tweetmode, ratio_threshold):
                     raise
                 except:
                     print "couldn't tweet :( retrying"
+                    time.sleep(5)
                     pass
 
 def user_chatters(user, depth=0):
@@ -111,8 +130,9 @@ def user_chatters(user, depth=0):
         print user+"__"
         return user_chatters(user, depth=depth+1)
     try:
-        while (req.status_code != 200):
+        while req.status_code != 200:
             print "----TMI error", req.status_code, "getting", user + "-----"
+            time.sleep(1)
             req = requests.get("http://tmi.twitch.tv/group/user/" + user)
         try:
             chat_data = req.json()
@@ -122,6 +142,9 @@ def user_chatters(user, depth=0):
     except TypeError:
         print "recursing, got some kinda error"
         return user_chatters(user, depth=depth+1)
+    except:
+        print "error getting chatters."
+        return user_chatters(user, depth=depth+1)
     return chatters
 
 def user_ratio(user):
@@ -129,7 +152,7 @@ def user_ratio(user):
     if chatters == None:
         return 1 #some error occurred. streamer offline? twitch down?
     viewers = user_viewers(user)
-    if viewers != 0:
+    if viewers and viewers != 0:
         ratio = float(chatters) / viewers
         if chatters == 0:
             return 0
@@ -142,28 +165,49 @@ def send_sentinel_tweet():
 
 #deletes offline users from the timeline
 def destroy_offline():
-    stati = api.GetUserTimeline(twitter_name)
+    stati = api.GetUserTimeline(twitter_name, count=200)
     if len(stati) == 1:
         if stati[0].text == sentinel_msg:
             return
     for status in stati:
         name = status.text.split(" ")[0]
-        if user_ratio(name) > (2 * 0.16) or user_viewers(name) < 200:
+        if user_ratio(name) > (0.17) or user_viewers(name) < 200:
             print name + " appears to have stopped botting! deleting tweet."
-            api.DestroyStatus(status.id)
-    if len(api.GetUserTimeline(twitter_name)) == 0:
+            try:
+                api.DestroyStatus(status.id)
+            except twitter.TwitterError:
+                time.sleep(5)
+                pass
+    if len(api.GetUserTimeline(twitter_name, count=200)) == 0:
         send_sentinel_tweet()
 
 def destroy_all_tweets():
-    stati = api.GetUserTimeline(twitter_name)
-    for status in stati:
+    try:
+        stati = api.GetUserTimeline(twitter_name, count=200)
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except:
+        time.sleep(3)
+        return destroy_all_tweets()
+    while len(stati) != 0:
+        for status in stati:
+            try:
+                api.DestroyStatus(status.id)
+                print "deleted status", status.text
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except:
+                print status
+                print status.id
+                print status.text
+                destroy_all_tweets()
+                break
         try:
-            api.DestroyStatus(status.id)
-        except:
-            print status
-            print status.id
-            print status.text
+            stati = api.GetUserTimeline(twitter_name, count=200)
+        except (KeyboardInterrupt, SystemExit):
             raise
+        except:
+            continue
 
 crash_msg = "Looks like this bot isn't running :/\n(It either crashed or I turned it off for some reason.)" 
 def on_crash():
